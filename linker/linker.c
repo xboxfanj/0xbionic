@@ -152,6 +152,7 @@ static void insert_soinfo_into_debug_map(soinfo * info)
     map = &(info->linkmap);
     map->l_addr = info->base;
     map->l_name = (char*) info->name;
+    map->l_ld = (uintptr_t)info->dynamic;
 
     /* Stick the new library at the end of the list.
      * gdb tends to care more about libc than it does
@@ -1180,10 +1181,16 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
                 return -1;
             }
 #endif
-            if ((s->st_shndx == SHN_UNDEF) && (s->st_value != 0)) {
-                DL_ERR("%5d In '%s', shndx=%d && value=0x%08x. We do not "
-                      "handle this yet", pid, si->name, s->st_shndx,
-                      s->st_value);
+            //if ((s->st_shndx == SHN_UNDEF) && (s->st_value != 0)) {
+            //    DL_ERR("%5d In '%s', shndx=%d && value=0x%08x. We do not "
+            //          "handle this yet", pid, si->name, s->st_shndx,
+            //          s->st_value);
+            if((ELF32_ST_BIND(s->st_info) != STB_WEAK) &&
+               (s->st_shndx == SHN_UNDEF) && (s->st_value != 0)) {
+                 ERROR("%5d In '%s', shndx=%d && value=0x%08x name=%s. We do"
+                      "not handle this yet\n",
+                      pid, si->name, s->st_shndx, s->st_value,
+                      strtab + symtab[sym].st_name);
                 return -1;
             }
             sym_addr = (unsigned)(s->st_value + base);
