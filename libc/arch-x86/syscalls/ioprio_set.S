@@ -2,16 +2,18 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type setreuid, @function
-    .globl setreuid
+    .type ioprio_set, @function
+    .globl ioprio_set
     .align 4
 
-setreuid:
+ioprio_set:
     pushl   %ebx
     pushl   %ecx
-    mov     12(%esp), %ebx
-    mov     16(%esp), %ecx
-    movl    $__NR_setreuid32, %eax
+    pushl   %edx
+    mov     16(%esp), %ebx
+    mov     20(%esp), %ecx
+    mov     24(%esp), %edx
+    movl    $__NR_ioprio_set, %eax
     int     $0x80
     cmpl    $-129, %eax
     jb      1f
@@ -21,6 +23,7 @@ setreuid:
     addl    $4, %esp
     orl     $-1, %eax
 1:
+    popl    %edx
     popl    %ecx
     popl    %ebx
     ret

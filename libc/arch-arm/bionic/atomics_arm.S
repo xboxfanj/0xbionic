@@ -35,11 +35,13 @@
 #endif
 
 .global __atomic_cmpxchg
+.type __atomic_cmpxchg, %function
 .global __atomic_swap
+.type __atomic_swap, %function
 .global __atomic_dec
+.type __atomic_dec, %function
 .global __atomic_inc
-.global __futex_wait
-.global __futex_wake
+.type __atomic_inc, %function
 
 #define FUTEX_WAIT 0
 #define FUTEX_WAKE 1
@@ -174,9 +176,33 @@ __atomic_swap:
     bx      lr
 
 /* __futex_wait(*ftx, val, *timespec) */
-/* __futex_syscall(*ftx, op, val, *timespec, *addr2, val3) */
+/* __futex_wake(*ftx, counter) */
+/* __futex_syscall3(*ftx, op, val) */
+/* __futex_syscall4(*ftx, op, val, *timespec) */
+
+.global __futex_wait
+.type __futex_wait, %function
+
+.global __futex_wake
+.type __futex_wake, %function
+
+.global __futex_syscall3
+.type __futex_syscall3, %function
+
+.global __futex_syscall4
+.type __futex_syscall4, %function
 
 #if __ARM_EABI__
+
+__futex_syscall3:
+    .fnstart
+    stmdb   sp!, {r4, r7}
+    .save   {r4, r7}
+    ldr     r7, =__NR_futex
+    swi     #0
+    ldmia   sp!, {r4, r7}
+    bx      lr
+    .fnend
 
 __futex_wait:
     .fnstart
@@ -202,6 +228,10 @@ __futex_wake:
 
 #else
 
+__futex_syscall3:
+    swi     #__NR_futex
+    bx      lr
+
 __futex_wait:
     mov     r3, r2
     mov     r2, r1
@@ -216,3 +246,6 @@ __futex_wake:
     bx      lr
 
 #endif
+
+__futex_syscall4:
+    b __futex_syscall3

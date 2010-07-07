@@ -2,15 +2,15 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type setuid, #function
-    .globl setuid
+    .type __setresuid, #function
+    .globl __setresuid
     .align 4
     .fnstart
 
-setuid:
+__setresuid:
     .save   {r4, r7}
     stmfd   sp!, {r4, r7}
-    ldr     r7, =__NR_setuid32
+    ldr     r7, =__NR_setresuid32
     swi     #0
     ldmfd   sp!, {r4, r7}
     movs    r0, r0

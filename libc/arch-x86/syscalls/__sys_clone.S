@@ -2,18 +2,22 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type setresuid, @function
-    .globl setresuid
+    .type __sys_clone, @function
+    .globl __sys_clone
     .align 4
 
-setresuid:
+__sys_clone:
     pushl   %ebx
     pushl   %ecx
     pushl   %edx
-    mov     16(%esp), %ebx
-    mov     20(%esp), %ecx
-    mov     24(%esp), %edx
-    movl    $__NR_setresuid32, %eax
+    pushl   %esi
+    pushl   %edi
+    mov     24(%esp), %ebx
+    mov     28(%esp), %ecx
+    mov     32(%esp), %edx
+    mov     36(%esp), %esi
+    mov     40(%esp), %edi
+    movl    $__NR_clone, %eax
     int     $0x80
     cmpl    $-129, %eax
     jb      1f
@@ -23,6 +27,8 @@ setresuid:
     addl    $4, %esp
     orl     $-1, %eax
 1:
+    popl    %edi
+    popl    %esi
     popl    %edx
     popl    %ecx
     popl    %ebx

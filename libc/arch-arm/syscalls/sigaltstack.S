@@ -2,15 +2,15 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type setresuid, #function
-    .globl setresuid
+    .type sigaltstack, #function
+    .globl sigaltstack
     .align 4
     .fnstart
 
-setresuid:
+sigaltstack:
     .save   {r4, r7}
     stmfd   sp!, {r4, r7}
-    ldr     r7, =__NR_setresuid32
+    ldr     r7, =__NR_sigaltstack
     swi     #0
     ldmfd   sp!, {r4, r7}
     movs    r0, r0
