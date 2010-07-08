@@ -28,10 +28,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-extern int __pwrite64(int fd, void *buf, size_t nbytes, loff_t offset);
+extern int __pwrite64(int fd, void *buf, size_t nbytes, off_t lo, off_t hi);
 
 ssize_t pwrite(int fd, void *buf, size_t nbytes, off_t offset)
 {
-    return __pwrite64(fd, buf, nbytes, offset);
+    return __pwrite64(fd, buf, nbytes, offset, 0);
 }
 

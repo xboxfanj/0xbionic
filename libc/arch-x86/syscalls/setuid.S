@@ -2,11 +2,11 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type __setuid, @function
-    .globl __setuid
+    .type setuid, @function
+    .globl setuid
     .align 4
 
-__setuid:
+setuid:
     pushl   %ebx
     mov     8(%esp), %ebx
     movl    $__NR_setuid32, %eax

@@ -32,7 +32,6 @@
 #include <ctype.h>
 #include <signal.h>
 #include <sys/mman.h>
-#include <errno.h>
 
 #include "linker.h"
 
@@ -40,11 +39,6 @@
 #include <cutils/sockets.h>
 
 void notify_gdb_of_libraries();
-
-#define  RETRY_ON_EINTR(ret,cond) \
-    do { \
-        ret = (cond); \
-    } while (ret < 0 && errno == EINTR)
 
 void debugger_signal_handler(int n)
 {
@@ -64,15 +58,10 @@ void debugger_signal_handler(int n)
          * is paranoid and will verify that we are giving a tid
          * that's actually in our process
          */
-        int  ret;
+        write(s, &tid, sizeof(unsigned));
 
-        RETRY_ON_EINTR(ret, write(s, &tid, sizeof(unsigned)));
-        if (ret == sizeof(unsigned)) {
-            /* if the write failed, there is no point to read on
-             * the file descriptor. */
-            RETRY_ON_EINTR(ret, read(s, &tid, 1));
-            notify_gdb_of_libraries();
-        }
+        read(s, &tid, 1);
+        notify_gdb_of_libraries();
         close(s);
     }
 

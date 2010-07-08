@@ -2,16 +2,20 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type __setreuid, @function
-    .globl __setreuid
+    .type __clone, @function
+    .globl __clone
     .align 4
 
-__setreuid:
+__clone:
     pushl   %ebx
     pushl   %ecx
-    mov     12(%esp), %ebx
-    mov     16(%esp), %ecx
-    movl    $__NR_setreuid32, %eax
+    pushl   %edx
+    pushl   %esi
+    mov     20(%esp), %ebx
+    mov     24(%esp), %ecx
+    mov     28(%esp), %edx
+    mov     32(%esp), %esi
+    movl    $__NR_clone, %eax
     int     $0x80
     cmpl    $-129, %eax
     jb      1f
@@ -21,6 +25,8 @@ __setreuid:
     addl    $4, %esp
     orl     $-1, %eax
 1:
+    popl    %esi
+    popl    %edx
     popl    %ecx
     popl    %ebx
     ret

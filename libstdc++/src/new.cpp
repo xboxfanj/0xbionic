@@ -23,12 +23,16 @@ void* operator new[](std::size_t size)
 
 void  operator delete(void* ptr)
 {
-    free(ptr);
+    if (ptr) {
+        free(ptr);
+    }
 }
 
 void  operator delete[](void* ptr)
 {
-    free(ptr);
+    if (ptr) {
+        free(ptr);
+    }
 }
 
 void* operator new(std::size_t size, const std::nothrow_t&)
@@ -43,12 +47,16 @@ void* operator new[](std::size_t size, const std::nothrow_t&)
 
 void  operator delete(void* ptr, const std::nothrow_t&)
 {
-    free(ptr);
+    if (ptr) {
+        free(ptr);
+    }
 }
 
 void  operator delete[](void* ptr, const std::nothrow_t&)
 {
-    free(ptr);
+    if (ptr) {
+        free(ptr);
+    }
 }
 
 

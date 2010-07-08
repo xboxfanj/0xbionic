@@ -40,8 +40,6 @@
 #include <linux/resource.h>
 #undef   getrusage
 
-typedef unsigned long rlim_t;
-
 __BEGIN_DECLS
 
 extern int getpriority(int, int);

@@ -25,42 +25,80 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-#ifndef _SYS_EPOLL_H_
-#define _SYS_EPOLL_H_
+#include <sys/atomics.h>
 
-#define EPOLLIN          0x00000001
-#define EPOLLPRI         0x00000002
-#define EPOLLOUT         0x00000004
-#define EPOLLERR         0x00000008
-#define EPOLLHUP         0x00000010
-#define EPOLLRDNORM      0x00000040
-#define EPOLLRDBAND      0x00000080
-#define EPOLLWRNORM      0x00000100
-#define EPOLLWRBAND      0x00000200
-#define EPOLLMSG         0x00000400
-#define EPOLLET          0x80000000
+#define FUTEX_SYSCALL 240
+#define FUTEX_WAIT 0
+#define FUTEX_WAKE 1
 
-#define EPOLL_CTL_ADD    1
-#define EPOLL_CTL_DEL    2
-#define EPOLL_CTL_MOD    3
-
-typedef union epoll_data 
+int __futex_wait(volatile void *ftx, int val)
 {
-    void *ptr;
-    int fd;
-    unsigned int u32;
-    unsigned long long u64;
-} epoll_data_t;
+    int ret;
+    asm volatile (
+        "int $0x80;"
+        : "=a" (ret)
+        : "0" (FUTEX_SYSCALL),
+          "b" (ftx),
+          "c" (FUTEX_WAIT),
+          "d" (val),
+          "S" (0)
+    );
+    return ret;
+}
 
-struct epoll_event 
+int __futex_wake(volatile void *ftx, int count)
 {
-    unsigned int events;
-    epoll_data_t data;
-};
+    int ret;
+    asm volatile (
+        "int $0x80;"
+        : "=a" (ret)
+        : "0" (FUTEX_SYSCALL),
+          "b" (ftx),
+          "c" (FUTEX_WAKE),
+          "d" (count)
+    );
+    return ret;
+}
 
-int epoll_create(int size);
-int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event);
-int epoll_wait(int epfd, struct epoll_event *events, int max, int timeout);
+int __atomic_cmpxchg(int old, int new, volatile int* addr) {
+    int xchg;
+    asm volatile (
+        "lock;"
+        "cmpxchg %%ecx, (%%edx);"
+        "setne %%al;"
+        : "=a" (xchg)
+        : "a" (old),
+          "c" (new),
+          "d" (addr)
+    );
+    return xchg;
+}
 
-#endif  /* _SYS_EPOLL_H_ */
+int __atomic_swap(int new, volatile int* addr) {
+    int old;
+    asm volatile (
+        "lock;"
+        "xchg %%ecx, (%%edx);"
+        : "=c" (old)
+        : "c" (new),
+          "d" (addr)
+    );
+    return old;
+}
+
+int __atomic_dec(volatile int* addr) {
+    int old;
+    do {
+        old = *addr;
+    } while (atomic_cmpxchg(old, old-1, addr));
+    return old;
+}
+
+int __atomic_inc(volatile int* addr) {
+    int old;
+    do {
+        old = *addr;
+    } while (atomic_cmpxchg(old, old+1, addr));
+    return old;
+}
 

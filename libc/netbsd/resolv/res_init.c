@@ -198,8 +198,6 @@ int load_domain_search_list(res_state statp) {
 		if (pp > statp->dnsrch)
 			return 1;
 	}
-	statp->defdname[0] = '\0';  /* no default domain name on Android */
-	statp->dnsrch[0] = NULL;
 	return 0;
 }
 #endif
@@ -383,7 +381,7 @@ __res_vinit(res_state statp, int preinit) {
 
 	/* Add the domain search list */
 	havesearch = load_domain_search_list(statp);
-#else /* !ANDROID_CHANGES - IGNORE resolv.conf in Android */
+#else /* IGNORE resolv.conf */
 #define	MATCH(line, name) \
 	(!strncmp(line, name, sizeof(name) - 1) && \
 	(line[sizeof(name) - 1] == ' ' || \
@@ -536,7 +534,7 @@ __res_vinit(res_state statp, int preinit) {
 	    statp->nsort = nsort;
 	    (void) fclose(fp);
 	}
-#endif /* !ANDROID_CHANGES */
+#endif /* ANDROID_CHANGES */
 /*
  * Last chance to get a nameserver.  This should not normally
  * be necessary

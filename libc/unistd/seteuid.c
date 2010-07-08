@@ -29,6 +29,5 @@
 
 int seteuid(uid_t euid)
 {
-    cpuacct_add(euid);
-    return __setresuid(-1, euid,-1);
+    return setresuid(-1, euid,-1);
 }

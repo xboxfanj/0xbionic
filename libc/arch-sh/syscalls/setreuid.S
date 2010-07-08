@@ -2,19 +2,19 @@
 #include <sys/linux-syscalls.h>
 
     .text
-    .type ioprio_set, @function
-    .globl ioprio_set
+    .type setreuid, @function
+    .globl setreuid
     .align 4
 
-ioprio_set:
+setreuid:
 
     /* invoke trap */
     mov.l   0f, r3  /* trap num */
-    trapa   #(3 + 0x10)
+    trapa   #(2 + 0x10)
 
     /* check return value */
     cmp/pz  r0
-    bt      __NR_ioprio_set_end
+    bt      __NR_setreuid32_end
 
     /* keep error number */
     sts.l   pr, @-r15
@@ -23,10 +23,10 @@ ioprio_set:
     mov     r0, r4
     lds.l   @r15+, pr
 
-__NR_ioprio_set_end:
+__NR_setreuid32_end:
     rts
     nop
 
     .align  2
-0:  .long   __NR_ioprio_set
+0:  .long   __NR_setreuid32
 1:  .long   __set_syscall_errno

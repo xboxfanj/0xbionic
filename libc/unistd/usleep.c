@@ -28,7 +28,7 @@
 #include <time.h>
 #include <errno.h>
 
-int usleep(unsigned long usec)
+void usleep(unsigned long usec)
 {
   struct timespec ts;
 
@@ -43,13 +43,10 @@ int usleep(unsigned long usec)
 
   for (;;)
   {
-    if ( nanosleep( &ts, &ts ) == 0 )
-        return 0;
+    if ( nanosleep( &ts, &ts ) >= 0 )
+        break;
 
-    // We try again if the nanosleep failure is EINTR.
-    // The other possible failures are EINVAL (which we should pass through),
-    // and ENOSYS, which doesn't happen.
     if ( errno != EINTR )
-        return -1;
+        break;
   }
 }

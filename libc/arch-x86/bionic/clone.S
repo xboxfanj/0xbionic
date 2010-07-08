@@ -48,8 +48,3 @@ __pthread_clone:
         popl    %ecx
         popl    %ebx
         ret
-
-/* XXX: TODO: Add __bionic_clone here
- *            See bionic/bionic_clone.c and arch-arm/bionic/clone.S
- *            for more details...
- */

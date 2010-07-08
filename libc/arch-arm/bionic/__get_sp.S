@@ -26,7 +26,6 @@
  * SUCH DAMAGE.
  */
 .global __get_sp
-.type __get_sp, %function
 
 __get_sp:
 	mov r0, sp

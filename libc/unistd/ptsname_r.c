@@ -32,7 +32,7 @@
 #include <errno.h>
 #include <string.h>
 
-int    ptsname_r( int  fd, char*  buf, size_t  buflen)
+char*  ptsname_r( int  fd, char*  buf, size_t  buflen)
 {
     unsigned int  pty_num;
     char          buff[64];
@@ -40,19 +40,17 @@ int    ptsname_r( int  fd, char*  buf, size_t  buflen)
 
     if (buf == NULL) {
         errno = EINVAL;
-        return -1;
+        return NULL;
     }
 
-    if ( ioctl( fd, TIOCGPTN, &pty_num ) != 0 ) {
-        errno = ENOTTY;
-        return -1;
-    }
+    if ( ioctl( fd, TIOCGPTN, &pty_num ) != 0 )
+        return NULL;
 
     len = snprintf( buff, sizeof(buff), "/dev/pts/%u", pty_num );
     if (len+1 > (int)buflen) {
         errno = ERANGE;
-        return -1;
+        return NULL;
     }
     memcpy( buf, buff, len+1 );
-    return 0;
+    return buf;
 }

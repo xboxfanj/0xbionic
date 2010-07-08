@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008, 2009 The Android Open Source Project
+ * Copyright (C) 2008 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -48,7 +48,6 @@
 
 #include "linker.h"
 #include "linker_debug.h"
-#include "linker_format.h"
 
 #include "ba.h"
 
@@ -69,6 +68,7 @@
  *
  * open issues / todo:
  *
+ * - should we do anything special for STB_WEAK symbols?
  * - are we doing everything we should for ARM_COPY relocations?
  * - cleaner error reporting
  * - after linking, set as much stuff as possible to READONLY
@@ -92,15 +92,15 @@ static soinfo *somain; /* main process, always the one after libdl_info */
 #endif
 
 
-/* Set up for the buddy allocator managing the non-prelinked libraries. */
-static struct ba_bits ba_nonprelink_bitmap[(LIBLAST - LIBBASE) / LIBINC];
-static struct ba ba_nonprelink = {
+/* Set up for the buddy allocator managing the prelinked libraries. */
+static struct ba_bits ba_prelink_bitmap[(LIBLAST - LIBBASE) / LIBINC];
+static struct ba ba_prelink = {
     .base = LIBBASE,
     .size = LIBLAST - LIBBASE,
     .min_alloc = LIBINC,
     /* max_order will be determined automatically */
-    .bitmap = ba_nonprelink_bitmap,
-    .num_entries = sizeof(ba_nonprelink_bitmap)/sizeof(ba_nonprelink_bitmap[0]),
+    .bitmap = ba_prelink_bitmap,
+    .num_entries = sizeof(ba_prelink_bitmap)/sizeof(ba_prelink_bitmap[0]),
 };
 
 static inline int validate_soinfo(soinfo *si)
@@ -143,7 +143,7 @@ static char tmp_err_buf[768];
 static char __linker_dl_err_buf[768];
 #define DL_ERR(fmt, x...)                                                     \
     do {                                                                      \
-        format_buffer(__linker_dl_err_buf, sizeof(__linker_dl_err_buf),            \
+        snprintf(__linker_dl_err_buf, sizeof(__linker_dl_err_buf),            \
                  "%s[%d]: " fmt, __func__, __LINE__, ##x);                    \
         ERROR(fmt "\n", ##x);                                                      \
     } while(0)
@@ -258,7 +258,7 @@ static soinfo *alloc_info(const char *name)
 
     if(strlen(name) >= SOINFO_NAME_LEN) {
         DL_ERR("%5d library name %s too long", pid, name);
-        return NULL;
+        return 0;
     }
 
     /* The freelist is populated when we call free_info(), which in turn is
@@ -406,20 +406,20 @@ static Elf32_Sym *_elf_lookup(soinfo *si, unsigned hash, const char *name)
         s = symtab + n;
         if(strcmp(strtab + s->st_name, name)) continue;
 
-            /* only concern ourselves with global and weak symbol definitions */
+            /* only concern ourselves with global symbols */
         switch(ELF32_ST_BIND(s->st_info)){
         case STB_GLOBAL:
-        case STB_WEAK:
                 /* no section == undefined */
             if(s->st_shndx == 0) continue;
 
+        case STB_WEAK:
             TRACE_TYPE(LOOKUP, "%5d FOUND %s in %s (%08x) %d\n", pid,
                        name, si->name, s->st_value, s->st_size);
             return s;
         }
     }
 
-    return NULL;
+    return 0;
 }
 
 static unsigned elfhash(const char *_name)
@@ -437,23 +437,25 @@ static unsigned elfhash(const char *_name)
 }
 
 static Elf32_Sym *
+_do_lookup_in_so(soinfo *si, const char *name, unsigned *elf_hash)
+{
+    if (*elf_hash == 0)
+        *elf_hash = elfhash(name);
+    return _elf_lookup (si, *elf_hash, name);
+}
+
+static Elf32_Sym *
 _do_lookup(soinfo *si, const char *name, unsigned *base)
 {
-    unsigned elf_hash = elfhash(name);
+    unsigned elf_hash = 0;
     Elf32_Sym *s;
     unsigned *d;
     soinfo *lsi = si;
 
     /* Look for symbols in the local scope first (the object who is
      * searching). This happens with C++ templates on i386 for some
-     * reason.
-     *
-     * Notes on weak symbols:
-     * The ELF specs are ambigious about treatment of weak definitions in
-     * dynamic linking.  Some systems return the first definition found
-     * and some the first non-weak definition.   This is system dependent.
-     * Here we return the first definition found for simplicity.  */
-    s = _elf_lookup(si, elf_hash, name);
+     * reason. */
+    s = _do_lookup_in_so(si, name, &elf_hash);
     if(s != NULL)
         goto done;
 
@@ -463,12 +465,12 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
             if (!validate_soinfo(lsi)) {
                 DL_ERR("%5d bad DT_NEEDED pointer in %s",
                        pid, si->name);
-                return NULL;
+                return 0;
             }
 
             DEBUG("%5d %s: looking up %s in %s\n",
                   pid, si->name, name, lsi->name);
-            s = _elf_lookup(lsi, elf_hash, name);
+            s = _do_lookup_in_so(lsi, name, &elf_hash);
             if(s != NULL)
                 goto done;
         }
@@ -483,7 +485,7 @@ _do_lookup(soinfo *si, const char *name, unsigned *base)
         lsi = somain;
         DEBUG("%5d %s: looking up %s in executable %s\n",
               pid, si->name, name, lsi->name);
-        s = _elf_lookup(lsi, elf_hash, name);
+        s = _do_lookup_in_so(lsi, name, &elf_hash);
     }
 #endif
 
@@ -496,7 +498,7 @@ done:
         return s;
     }
 
-    return NULL;
+    return 0;
 }
 
 /* This is used by dl_sym().  It performs symbol lookup only within the
@@ -504,14 +506,15 @@ done:
  */
 Elf32_Sym *lookup_in_library(soinfo *si, const char *name)
 {
-    return _elf_lookup(si, elfhash(name), name);
+    unsigned unused = 0;
+    return _do_lookup_in_so(si, name, &unused);
 }
 
 /* This is used by dl_sym().  It performs a global symbol lookup.
  */
 Elf32_Sym *lookup(const char *name, soinfo **found)
 {
-    unsigned elf_hash = elfhash(name);
+    unsigned elf_hash = 0;
     Elf32_Sym *s = NULL;
     soinfo *si;
 
@@ -519,7 +522,7 @@ Elf32_Sym *lookup(const char *name, soinfo **found)
     {
         if(si->flags & FLAG_ERROR)
             continue;
-        s = _elf_lookup(si, elf_hash, name);
+        s = _do_lookup_in_so(si, name, &elf_hash);
         if (s != NULL) {
             *found = si;
             break;
@@ -532,41 +535,7 @@ Elf32_Sym *lookup(const char *name, soinfo **found)
         return s;
     }
 
-    return NULL;
-}
-
-soinfo *find_containing_library(void *addr)
-{
-    soinfo *si;
-
-    for(si = solist; si != NULL; si = si->next)
-    {
-        if((unsigned)addr >= si->base && (unsigned)addr - si->base < si->size) {
-            return si;
-        }
-    }
-
-    return NULL;
-}
-
-Elf32_Sym *find_containing_symbol(void *addr, soinfo *si)
-{
-    unsigned int i;
-    unsigned soaddr = (unsigned)addr - si->base;
-
-    /* Search the library's symbol table for any defined symbol which
-     * contains this address */
-    for(i=0; i<si->nchain; i++) {
-        Elf32_Sym *sym = &si->symtab[i];
-
-        if(sym->st_shndx != SHN_UNDEF &&
-           soaddr >= sym->st_value &&
-           soaddr < sym->st_value + sym->st_size) {
-            return sym;
-        }
-    }
-
-    return NULL;
+    return 0;
 }
 
 #if 0
@@ -619,7 +588,7 @@ static int open_library(const char *name)
         return fd;
 
     for (path = ldpaths; *path; path++) {
-        n = format_buffer(buf, sizeof(buf), "%s/%s", *path, name);
+        n = snprintf(buf, sizeof(buf), "%s/%s", *path, name);
         if (n < 0 || n >= (int)sizeof(buf)) {
             WARN("Ignoring very long library path: %s/%s\n", *path, name);
             continue;
@@ -628,7 +597,7 @@ static int open_library(const char *name)
             return fd;
     }
     for (path = sopaths; *path; path++) {
-        n = format_buffer(buf, sizeof(buf), "%s/%s", *path, name);
+        n = snprintf(buf, sizeof(buf), "%s/%s", *path, name);
         if (n < 0 || n >= (int)sizeof(buf)) {
             WARN("Ignoring very long library path: %s/%s\n", *path, name);
             continue;
@@ -827,14 +796,14 @@ alloc_mem_region(soinfo *si)
        for it from the buddy allocator, which manages the area between
        LIBBASE and LIBLAST.
     */
-    si->ba_index = ba_allocate(&ba_nonprelink, si->size);
+    si->ba_index = ba_allocate(&ba_prelink, si->size);
     if(si->ba_index >= 0) {
-        si->base = ba_start_addr(&ba_nonprelink, si->ba_index);
+        si->base = ba_start_addr(&ba_prelink, si->ba_index);
         PRINT("%5d mapping library '%s' at %08x (index %d) " \
               "through buddy allocator.\n",
               pid, si->name, si->base, si->ba_index);
         if (reserve_mem_region(si) < 0) {
-            ba_free(&ba_nonprelink, si->ba_index);
+            ba_free(&ba_prelink, si->ba_index);
             si->ba_index = -1;
             si->base = 0;
             goto err;
@@ -1130,7 +1099,7 @@ load_library(const char *name)
     /* Now actually load the library's segments into right places in memory */
     if (load_segments(fd, &__header[0], si) < 0) {
         if (si->ba_index >= 0) {
-            ba_free(&ba_nonprelink, si->ba_index);
+            ba_free(&ba_prelink, si->ba_index);
             si->ba_index = -1;
         }
         goto fail;
@@ -1233,7 +1202,7 @@ unsigned unload_library(soinfo *si)
             PRINT("%5d releasing library '%s' address space at %08x "\
                   "through buddy allocator.\n",
                   pid, si->name, si->base);
-            ba_free(&ba_nonprelink, si->ba_index);
+            ba_free(&ba_prelink, si->ba_index);
         }
         notify_gdb_of_unload(si);
         free_info(si);
@@ -1272,64 +1241,10 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
         if(sym != 0) {
             sym_name = (char *)(strtab + symtab[sym].st_name);
             s = _do_lookup(si, sym_name, &base);
-            if(s == NULL) {
-                /* We only allow an undefined symbol if this is a weak
-                   reference..   */
-                s = &symtab[sym];
-                if (ELF32_ST_BIND(s->st_info) != STB_WEAK) {
-                    DL_ERR("%5d cannot locate '%s'...\n", pid, sym_name);
-                    return -1;
-                }
-
-                /* IHI0044C AAELF 4.5.1.1:
-
-                   Libraries are not searched to resolve weak references.
-                   It is not an error for a weak reference to remain
-                   unsatisfied.
-
-                   During linking, the value of an undefined weak reference is:
-                   - Zero if the relocation type is absolute
-                   - The address of the place if the relocation is pc-relative
-                   - The address of nominial base address if the relocation
-                     type is base-relative.
-                  */
-
-                switch (type) {
-#if defined(ANDROID_ARM_LINKER)
-                case R_ARM_JUMP_SLOT:
-                case R_ARM_GLOB_DAT:
-                case R_ARM_ABS32:
-                case R_ARM_RELATIVE:    /* Don't care. */
-                case R_ARM_NONE:        /* Don't care. */
-#elif defined(ANDROID_X86_LINKER)
-                case R_386_JUMP_SLOT:
-                case R_386_GLOB_DAT:
-                case R_386_32:
-                case R_386_RELATIVE:    /* Dont' care. */
-#endif /* ANDROID_*_LINKER */
-                    /* sym_addr was initialized to be zero above or relocation
-                       code below does not care about value of sym_addr.
-                       No need to do anything.  */
-                    break;
-
-#if defined(ANDROID_X86_LINKER)
-                case R_386_PC32:
-                    sym_addr = reloc;
-                    break;
-#endif /* ANDROID_X86_LINKER */
-
-#if defined(ANDROID_ARM_LINKER)
-                case R_ARM_COPY:
-                    /* Fall through.  Can't really copy if weak symbol is
-                       not found in run-time.  */
-#endif /* ANDROID_ARM_LINKER */
-                default:
-                    DL_ERR("%5d unknown weak reloc type %d @ %p (%d)\n",
-                                 pid, type, rel, (int) (rel - start));
-                    return -1;
-                }
-            } else {
-                /* We got a definition.  */
+            if(s == 0) {
+                DL_ERR("%5d cannot locate '%s'...", pid, sym_name);
+                return -1;
+            }
 #if 0
             if((base == 0) && (si->base != 0)){
                     /* linking from libraries to main image is bad */
@@ -1338,11 +1253,20 @@ static int reloc_library(soinfo *si, Elf32_Rel *rel, unsigned count)
                 return -1;
             }
 #endif
-                sym_addr = (unsigned)(s->st_value + base);
-	    }
+            // st_shndx==SHN_UNDEF means an undefined symbol.
+            // st_value should be 0 then, except that the low bit of st_value is
+            // used to indicate whether the symbol points to an ARM or thumb function,
+            // and should be ignored in the following check.
+            if ((s->st_shndx == SHN_UNDEF) && ((s->st_value & ~1) != 0)) {
+                DL_ERR("%5d In '%s', symbol=%s shndx=%d && value=0x%08x. We do not "
+                      "handle this yet", pid, si->name, sym_name, s->st_shndx,
+                      s->st_value);
+                return -1;
+            }
+            sym_addr = (unsigned)(s->st_value + base);
             COUNT_RELOC(RELOC_SYMBOL);
         } else {
-            s = NULL;
+            s = 0;
         }
 
 /* TODO: This is ugly. Split up the relocations by arch into
@@ -1992,7 +1916,7 @@ static int link_image(soinfo *si, unsigned wr_offset)
     return 0;
 
 fail:
-    DL_ERR("failed to link %s\n", si->name);
+    ERROR("failed to link %s\n", si->name);
     si->flags |= FLAG_ERROR;
     return -1;
 }
@@ -2122,7 +2046,7 @@ unsigned __linker_init(unsigned **elfdata)
         vecs += 2;
     }
 
-    ba_init(&ba_nonprelink);
+    ba_init(&ba_prelink);
 
     si->base = 0;
     si->dynamic = (unsigned *)-1;
